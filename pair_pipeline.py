@@ -8,12 +8,10 @@ import statsmodels.api as sm
 
 from itertools import combinations
 
-from statsmodels.tsa.stattools import adfuller
-from statsmodels.tsa.stattools import coint
 from arch.unitroot.cointegration import phillips_ouliaris
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 
-from sklearn.cluster import KMeans, DBSCAN, OPTICS
+from sklearn.cluster import DBSCAN, OPTICS
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn import preprocessing
@@ -33,7 +31,6 @@ from typing import (TYPE_CHECKING,
                     Dict,
                     Hashable,
                     List,
-                    #Literal,
                     Optional,
                     Tuple,
                     TypeVar,
@@ -525,7 +522,6 @@ class PairSelection():
         n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
         print ("\nClusters discovered: %d" % n_clusters_)
         clustered_series = pd.Series(index=self.returns.columns, data=labels.flatten())
-        clustered_series_all = pd.Series(index=self.returns.columns, data=labels.flatten())
         clustered_series = clustered_series[clustered_series != -1]
         return clustered_series, labels
     
@@ -602,8 +598,6 @@ class PairSelection():
             for k, (i, j) in enumerate(pbar):
                 pbar.set_description("Pair {0}-{1}".format(keys[i],
                                                            keys[j]))
-            #for i in range(n):
-            #    for j in range(i+1, n):
                 S1 = data[keys[i]]
                 S2 = data[keys[j]]
                 spread = S1 - S2
@@ -614,7 +608,6 @@ class PairSelection():
                 coint_score_1 = coint_result_1.stat
                 coint_pvalue_1 = coint_result_1.pvalue
                 coint_result_2 = phillips_ouliaris(S2, S1)
-                coint_score_2 = coint_result_2.stat
                 coint_pvalue_2 = coint_result_2.pvalue
                 score_matrix[i, j] = coint_score_1
                 pvalue_matrix[i, j] = coint_pvalue_1
@@ -743,7 +736,7 @@ class PairSelection():
         
         
         in_pairs_series = self.clustered_series.loc[stocks]
-        stocks = list(np.unique(pairs))
+        stocks = list(np.unique(self.pairs_list))
         X_pairs = X_pca_df.loc[stocks]  
         
         tsne = TSNE(n_components=2, **tsne_kwargs)
@@ -754,11 +747,11 @@ class PairSelection():
         plt.axis('off')
         for pair in self.pairs_list:
             ticker1 = pair[0]
-            loc1 = X_pairs.index.get_loc(pair[0])
+            loc1 = X_pairs.index.get_loc(ticker1)
             x1, y1 = X_tsne[loc1, :]
 
             ticker2 = pair[1]
-            loc2 = X_pairs.index.get_loc(pair[1])
+            loc2 = X_pairs.index.get_loc(ticker2)
             x2, y2 = X_tsne[loc2, :]
 
             plt.plot([x1, x2], [y1, y2], 'k-', alpha=0.3, c='gray')

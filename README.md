@@ -3,7 +3,9 @@ Pairs trading strategy implementation based on Kalman filtering to create signal
 Pairs are selected by clustering and checking for co-integration within clusters. Pairs are then further tested for 
 their spreads mean reversion behavior by calculating the Hurst exponent and the halflife of mean reversion of the spread. 
 
-Install the requirements using `python -m pip install -r requirements.txt` and to generate the results run: 
+Install the requirements using `python -m pip install -r requirements.txt`. The requirements are generated via pipreqs.
+
+To generate the results run: 
 
 ```SHELL
 python kalman_pairs_testing.py --plot iplot=False --minusdvol 50000000 \ 

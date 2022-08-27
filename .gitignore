@@ -1,2 +1,9 @@
 __pycache__/
 stock_data.ipynb
+test.py
+data/sec_masters
+signal_strat.py
+etf_data_pipeline.py
+.ipynb_checkpoints/
+results/.ipynb_checkpoints
+test.csv

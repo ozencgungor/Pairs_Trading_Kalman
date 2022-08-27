@@ -69,30 +69,44 @@ class PairSelection():
                  tickers: List[str], 
                  fromdate, 
                  todate,
-                 min_usd_vol=None):
+                 min_usd_vol: int=None,
+                 save_ohlc: bool=False,
+                 data_path: str=None):
         
         self.tickers = tickers
         self.fromdate = fromdate
         self.todate = todate
+        #if save_ohlc_path:
+        self.save_ohlc = save_ohlc
         
-        data = self.download_data(tickers_list=self.tickers,
-                                  start_date=self.fromdate,
-                                  end_date=self.todate)
+        if data_path:  #re-use saved data, avoid downloading
+            self.data_path = data_path
+            print('Loading Data...')
+            data = pd.read_csv(self.data_path, 
+                               header=[0,1], 
+                               index_col=0, 
+                               parse_dates=True,)
+        
+        elif data_path == None:  #download
+            data = self.download_data(tickers_list=self.tickers,
+                                      start_date=self.fromdate,
+                                      end_date=self.todate,
+                                      save=self.save_ohlc,)
         
         #On certain dates, yfinance returns `NaN`s for the last row of data
         #check to see if that's the case before dropping columns with
         #any`NaN` values
         lastrow = data.iloc[-1].isna().to_numpy()
-        if lastrow.all() == False:
+        if lastrow.all() == True:
             data.drop(data.tail(1).index,inplace=True)
         #now drop `NaN`s
         data.dropna(axis=1, inplace=True) 
-        self.data = data
+        self.ohlc = data
         
         #apply volume threshold if needed
         if min_usd_vol:
             self.closes = self._usd_vol_threshold(min_dollar_vol=min_usd_vol, 
-                                                  data=self.data)
+                                                  data=self.ohlc)
             self.min_usd_vol = min_usd_vol
         else:
             self.closes = data['Close']
@@ -104,10 +118,11 @@ class PairSelection():
                       tickers_list: List[str],
                       start_date,
                       end_date,
-                      chunk_size:int = 1000,
-                      save_path: str=None) -> pd.DataFrame:
+                      chunk_size: int=1000,
+                      save: bool=False,) -> pd.DataFrame:
         """
-        Collects and combines OHLCV data of securities into a single `pd.DataFrame`
+        Downloads OHLCV data of securities from `yfinance` and 
+        into a single `pd.DataFrame`.
         Will also adjust the Open, High and Low columns.
         ---------------------------------------------------------------
         :param tickers_list: list of ticker names
@@ -130,7 +145,7 @@ class PairSelection():
             chunk = yf.download(ticker_chunks[i],
                                 start=self.fromdate,
                                 end=self.todate,
-                                show_errors=False)
+                                show_errors=False,)
 
             #print('Adjusting...')
             #chunk = adj_ohlc(chunk)
@@ -142,8 +157,10 @@ class PairSelection():
         print('Adjusting Prices...')
         tickers_master = self._adj_ohlc(tickers_master)
         #if needed save it for future reference
-        if save_path:
-            tickers_master.to_csv('save_path')
+        if save:
+            print('Saving data...')
+            tickers_master.to_csv('data/sec_masters/sec_masters_{0}-{1}.csv'.format(self.fromdate,
+                                                                    self.todate))
 
         return tickers_master 
 
@@ -153,9 +170,9 @@ class PairSelection():
                             max_halflife: int,
                             pca_kwargs: dict={},
                             cluster_kwargs: dict={},
-                            coint_significance: float=0.90,
+                            coint_significance: float=0.10,
                             max_hurst_exp: float = 0.5,
-                            *cluster_args) -> ClusteringOutput:
+                            eps: float=0.5,) -> ClusteringOutput:
         """
         Executes the pair selection algorithm
         on `self.closes`
@@ -239,8 +256,8 @@ class PairSelection():
         (clustered_series, 
          labels) = self._cluster(data=X_pca, 
                                  cluster_alg=cluster_alg,
-                                 *cluster_args,
-                                 **cluster_kwargs)
+                                 eps=eps,
+                                 **cluster_kwargs,)
         
         #save clustering result as well, useful for plotting
         self.clustered_series = clustered_series
@@ -252,7 +269,7 @@ class PairSelection():
                                             clusters=clustered_series,
                                             coint_significance=coint_significance,
                                             max_halflife=max_halflife,
-                                            max_hurst=max_hurst_exp)
+                                            max_hurst=max_hurst_exp,)
         
         self.pairs_list = list_pairs
         self.pairs_list_dict = list_pairs_dict
@@ -261,7 +278,7 @@ class PairSelection():
         return list_pairs, list_pairs_dict, cluster_dict
     
     def get_cointegrated_pairs(self,
-                               confidence_level: int) -> List[Dict[str, str]]:
+                               confidence_level: int,) -> List[Dict[str, str]]:
         """
         Tests pairs for (Johansen) cointegration and 
         returns a list of pairs that cointegrate 
@@ -276,7 +293,7 @@ class PairSelection():
                    'ticker_2': 'yet_other_another_ticker'},...]
         """        
         pairs = self._get_coint_pairs(closes=self.closes,
-                                      conf_level=confidence_level)
+                                      conf_level=confidence_level,)
         
         self.coint_pairs = pairs
         return pairs
@@ -288,9 +305,9 @@ class PairSelection():
                              max_halflife: int,
                              pca_kwargs={},
                              cluster_kwargs={},
-                             coint_significance: float=0.90,
-                             max_hurst_exp: float = 0.5,
-                             *cluster_args) -> ClusteringOutput:
+                             coint_significance: float=0.10,
+                             max_hurst_exp: float=0.5,
+                             eps: float=0.5,) -> ClusteringOutput:
         """
         Executes the pair selection algorithm.
         The algorithm is as follows:
@@ -360,24 +377,24 @@ class PairSelection():
         
         X_pca = self._fit_PCA(returns=returns, 
                               n_components=n_pca_components, 
-                              **pca_kwargs)
+                              **pca_kwargs,)
         clustered_series = self._cluster(data=X_pca, 
                                          cluster_alg=cluster_alg,
-                                         *cluster_args,
-                                         **cluster_kwargs)
+                                         eps=eps,
+                                         **cluster_kwargs,)
         (list_pairs,
          list_pairs_dict, 
          cluster_dict) = self._select_pairs(closes_data=data,
                                             clusters=clustered_series,
                                             coint_significance=coint_significance,
                                             max_halflife=max_halflife,
-                                            max_hurst=max_hurst_exp)
+                                            max_hurst=max_hurst_exp,)
         
         return list_pairs, list_pairs_dict, cluster_dict
                                
     def _get_coint_pairs(self, 
                          closes: pd.DataFrame, 
-                         conf_level: int) -> List[Dict[str, str]]:
+                         conf_level: int,) -> List[Dict[str, str]]:
         """
         Tests pairs for cointegration and returns a list of pairs that cointegrate 
         above the confidence level
@@ -406,7 +423,7 @@ class PairSelection():
             # cvt and cvm, respectively
             confidence_level_cols = {90: 0,
                                      95: 1,
-                                     99: 2}
+                                     99: 2,}
             confidence_level_col = confidence_level_cols[conf_level]
             trace_crit_value = result.cvt[:, confidence_level_col]
             eigen_crit_value = result.cvm[:, confidence_level_col]
@@ -415,7 +432,7 @@ class PairSelection():
             # see if they exceeded the confidence threshold
             if np.all(result.lr1 >= trace_crit_value) and np.all(result.lr2 >= eigen_crit_value):
                 cointegrating_pairs.append(dict(ticker_1=ticker_1,
-                                                ticker_2=ticker_2))
+                                                ticker_2=ticker_2,))
         print('There are {0} cointegrating pairs'.format(len(cointegrating_pairs)), 
               'at {0}% confidence level'.format(conf_level))
 
@@ -443,7 +460,7 @@ class PairSelection():
 
     def _usd_vol_threshold(self,
                            min_dollar_vol: int, 
-                           data: pd.DataFrame) -> pd.DataFrame:
+                           data: pd.DataFrame,) -> pd.DataFrame:
         """
         Selects securities with average daily volume in dollars larger than 
         the threshold value
@@ -467,7 +484,7 @@ class PairSelection():
     def _fit_PCA(self,
                  returns: pd.DataFrame, 
                  n_components: int, 
-                 **kwargs) -> np.array:
+                 **kwargs,) -> np.array:
         """
         Performs PCA on closing prices data. 
         Performs standard scaling before fitting.
@@ -482,7 +499,7 @@ class PairSelection():
         scaler = preprocessing.StandardScaler()
         scaled_returns = pd.DataFrame(scaler.fit_transform(returns),
                                       columns = returns.columns,
-                                      index = returns.index)
+                                      index = returns.index,)
         
         pca = PCA(n_components=n_components, **kwargs)
         pca.fit(scaled_returns)
@@ -492,9 +509,8 @@ class PairSelection():
     def _cluster(self,
                  data: np.array, 
                  cluster_alg: str,
-                 plot_cluster_tsne: bool = False,
-                 *args, 
-                 **kwargs) -> pd.Series:
+                 eps:float=0.5, 
+                 **kwargs,) -> pd.Series:
         """
         Performs clustering on PCA transformed returns data
         ----------
@@ -503,18 +519,16 @@ class PairSelection():
                             to be specified.
                             see docs on `sklearn.cluster.OPTICS` 
                             and `sklearn.cluster.DBSCAN` for more info
-        :param args: arguments to pass onto the `sklearn.cluster.OPTICS`
-                     or `sklearn.cluster.DBSCAN` instances. 
-                     Has to include `eps` for DBSCAN
+        :param eps: `eps` for DBSCAN
         :param kwargs: keyword arguments to pass onto the `sklearn.cluster.OPTICS`
                        or `sklearn.cluster.DBSCAN` instances.
         ----------
         Returns: A `pd.Series` with tickers as index and corresponding cluster label
         """
         if cluster_alg == 'OPTICS':
-            clst = OPTICS(*args, **kwargs)
+            clst = OPTICS(**kwargs)
         elif cluster_alg == 'DBSCAN':
-            clst = DBSCAN(*args, **kwargs)
+            clst = DBSCAN(eps=eps, **kwargs)
         else:
             raise ValueError('Only OPTICS or DBSCAN is supported')
         clusters = clst.fit(data)
@@ -530,7 +544,7 @@ class PairSelection():
                       clusters: pd.Series, 
                       coint_significance: float, 
                       max_halflife: int, 
-                      max_hurst=0.5) -> ClusteringOutput:
+                      max_hurst=0.5,) -> ClusteringOutput:
         """
         Selects ticker pairs in the following way:
         1. Check for cointegration using the Phillips Ouliaris test
@@ -583,7 +597,7 @@ class PairSelection():
         def check_pairs(data: pd.DataFrame, 
                         significance: float, 
                         max_mr_halflife: int, 
-                        max_hurst_exp: float) -> dict:
+                        max_hurst_exp: float,) -> dict:
             
             n = data.shape[1]
             score_matrix = np.zeros((n, n))
@@ -604,23 +618,25 @@ class PairSelection():
                 hurst_exponent = _get_hurst_exponent(spread, 
                                                         max_lag=20)
                 halflife = _get_mean_reversion_halflife(spread)
-                coint_result_1 = phillips_ouliaris(S1, S2)
+                coint_result_1 = phillips_ouliaris(S1, S2, trend='ct')
                 coint_score_1 = coint_result_1.stat
                 coint_pvalue_1 = coint_result_1.pvalue
-                coint_result_2 = phillips_ouliaris(S2, S1)
+                coint_result_2 = phillips_ouliaris(S2, S1, trend='ct')
                 coint_pvalue_2 = coint_result_2.pvalue
                 score_matrix[i, j] = coint_score_1
                 pvalue_matrix[i, j] = coint_pvalue_1
                 hurst_matrix[i, j] = hurst_exponent
                 halflife_matrix[i, j] = halflife
-                if ((coint_pvalue_1 < significance) & 
-                    (coint_pvalue_2 < significance) & 
-                    (hurst_exponent < max_hurst_exp) & 
-                    (halflife < max_mr_halflife)):
+                if ((coint_pvalue_1 <= significance) & 
+                    (coint_pvalue_2 <= significance) & 
+                    (hurst_exponent <= max_hurst_exp) & 
+                    (halflife <= max_mr_halflife)):
                     pairs_dict.append(dict(ticker_1=keys[i],
                                             ticker_2=keys[j]))
+                    pairs_dict.append(dict(ticker_1=keys[j],
+                                            ticker_2=keys[i]))                    
                     pairs.append((keys[i], keys[j]))
-
+                    pairs.append((keys[j], keys[i]))
             result = {'coint_score': score_matrix,
                       'coint_pvalue': pvalue_matrix,
                       'hurst_exp': hurst_matrix,
@@ -795,18 +811,10 @@ class PairSelection():
         plt.show()        
         if save_path:    
             plt.savefig(save_path)        
-        
-        
-        
-        
-        
-        
-
 
 ##Helper Functions:        
     
-def _get_hurst_exponent(time_series: np.array, 
-                        max_lag=20) -> float:
+def _get_hurst_exponent(time_series: np.array, max_lag=20) -> float:
     """
     Returns the Hurst Exponent of the time series
     ------------------
@@ -857,8 +865,7 @@ def _get_ticker_list(ticker_name_path: str) -> List[str]:
     tickers_list = sorted(list(set(tickers_df['Symbol'].tolist())))
     return tickers_list
 
-def _extract_ticker(ticker: str, 
-                    data: pd.DataFrame) -> pd.DataFrame:
+def _extract_ticker(ticker: str, data: pd.DataFrame) -> pd.DataFrame:
     """
     Extracts individual OHLCV data for a given ticker name
     ------------------------------------------------------
@@ -870,3 +877,30 @@ def _extract_ticker(ticker: str,
     data_groupedby_ticker = data.reorder_levels([1,0], axis=1)
     ticker_OHLCV = data_groupedby_ticker[ticker]
     return ticker_OHLCV
+
+def p_value_at_risk(returns: np.array, alpha=0.95) -> float:
+    """
+    Calculates VaR (Value at Risk) as a percentage from (de-meaned) returns.
+    ------
+    :param returns: np.array of de-meaned returns
+    :param alpha: coverage percentage
+    ------
+    Returns: VaR as a float, -0.10 -> 10%
+    """
+    returns = np.nan_to_num(returns, nan=0.0)
+    pVaR = np.percentile(returns, 100 * (1-alpha))
+    return pVaR
+
+def p_c_value_at_risk(returns: np.array, alpha=0.95) -> float:
+    """
+    Calculates CVaR (Conditional Value at Risk) as a 
+    percentage from (de-meaned) returns.
+    ------
+    :param returns: np.array of de-meaned returns
+    :param alpha: coverage percentage
+    ------
+    Returns: CVaR as a float, -0.10 -> 10%
+    """
+    pVaR = p_value_at_risk(returns=returns, alpha=alpha)
+    cVaR = np.nanmean(returns[returns <= pVaR])
+    return cVaR

@@ -1,3 +1,9 @@
+import backtrader as bt
+import quantstats as qs
+import datetime
+import pandas as pd
+import yfinance as yf
+
 class CashMarket(bt.analyzers.Analyzer):
     """
     Analyzer returning cash and market values
@@ -17,7 +23,7 @@ class CashMarket(bt.analyzers.Analyzer):
     def get_analysis(self):
         return self.rets
     
-import quanstats as qs
+"""
 def tearsheet(scene, results):
    
     # Get the stats auto ordered nested dictionary
@@ -87,3 +93,41 @@ def tearsheet(scene, results):
             title=title,
             output=filepath,
         )
+
+class KalmanMovingAverage(bt.indicators.MovingAverageBase):
+    packages = ('pykalman',)
+    frompackages = (('pykalman', [('KalmanFilter', 'KF')]),)
+    lines = ('kma',)
+    alias = ('KMA',)
+    params = (
+        ('initial_state_covariance', 1.0),
+        ('observation_covariance', 1.0),
+        ('transition_covariance', 0.05),
+    )
+    plotinfo = dict(subplot=False, plot=False)
+
+    def __init__(self):
+        self.addminperiod(self.p.period)  # when to deliver values
+        self._dlast = self.data(-1)  # get previous day value
+
+    def nextstart(self):
+        self._k1 = self._dlast[0]
+        self._c1 = self.p.initial_state_covariance
+
+        self._kf = pykalman.KalmanFilter(
+            transition_matrices=[1],
+            observation_matrices=[1],
+            observation_covariance=self.p.observation_covariance,
+            transition_covariance=self.p.transition_covariance,
+            initial_state_mean=self._k1,
+            initial_state_covariance=self._c1,
+        )
+
+        self.next()
+
+    def next(self):
+        k1, self._c1 = self._kf.filter_update(self._k1, self._c1, self.data[0])
+        self.lines.kma[0] = self._k1 = k1
+"""
+
+

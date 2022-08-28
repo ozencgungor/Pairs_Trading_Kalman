@@ -1,12 +1,12 @@
-alpaca_backtrader_api==0.15.0
 arch==5.3.1
-backtrader==1.9.76.123
+-e git+https://github.com/mementum/backtrader.git@0fa63ef4a35dc53cc7320813f8b15480c8f85517#egg=backtrader
 imgkit==1.2.2
 matplotlib==3.5.3
 numpy==1.21.5
 pandas==1.3.5
 QuantStats==0.0.59
 seaborn==0.11.2
+scikit-learn==1.1.2
 statsmodels==0.13.2
 Theano_PyMC==1.1.2
 tqdm==4.63.0

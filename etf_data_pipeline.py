@@ -4,7 +4,6 @@ import yfinance as yf
 import yahoo_fin as yfin
 import itertools
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
-from IPython.display import clear_output
 from tqdm import tqdm
 import backtrader as bt
 

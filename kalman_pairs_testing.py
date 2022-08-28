@@ -6,8 +6,6 @@ import argparse
 import datetime
 
 import backtrader as bt
-
-import etf_data_pipeline as pipe
 import pair_pipeline as psel
 
 import pandas as pd
